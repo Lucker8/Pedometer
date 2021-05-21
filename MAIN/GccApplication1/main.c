@@ -46,7 +46,7 @@ int main(void)
 	register_st();
 	i2c_init();
 	LCD_init();
-	//MMA8451_init();
+	MMA8451_init();
 	
 	//uart_init();
 	//io_redirect();
@@ -68,6 +68,8 @@ int main(void)
 		printf("B1-GOAL");
 		LCD_set_cursor(13,0);
 		printf("W=%dkg",weight);
+		LCD_set_cursor(0,1);
+		printf("B2-Velocity");
 		LCD_set_cursor(0,3);
 		printf("B4-STOPWATCH");
 		if(PINC==B1)							//step counter menu, maybe distance goal
