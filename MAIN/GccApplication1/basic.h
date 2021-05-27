@@ -6,14 +6,15 @@
 #define ADC_PIN2 2
 #define ADC_PIN3 3
 #define GR_ACC_DK 9.81584
-#define DIG_ACC_ADDR1_R 0x3B
-#define DIG_ACC_ADDR1_W 0x3A
-#define DIG_ACC_ADDR1 0x1D
+#define DIG_ACC_ADDR1_R 0x3A
+#define DIG_ACC_ADDR1_W 0x3B
+#define DIG_ACC_ADDR1 0x3A
 #define OUT_X_MSB 0x01
 #define F_SETUP 0x09
 #define XYZ_DATA_CFG 0x0E
 #define CTRL_REG1 0x2A
 #define CTRL_REG2 0x2B
+#define S_RATIO 0.434
 
 
 //gets raw data from mma4851

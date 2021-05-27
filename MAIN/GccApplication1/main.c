@@ -3,7 +3,7 @@
  *
  * Created: 1/10/2021 5:19:16 PM
  * Author : peter
- */ 
+ */
 #define F_CPU 16000000UL
 
 #include <avr/interrupt.h>
@@ -19,14 +19,17 @@
 #include "basic.h"
 
 
-#define B1 0x3E		//4
-#define B2 0x3D		//5
-#define B3 0x3B		//6
-#define B4 0x37		//7
 
 
-uint8_t name_f = 0,w_f=0,start_flag, weight,name,rst_f=0;;									//if not start flag, new user
-unsigned int name_addr=3,weight_addr=1,height_addr=2,timer;							//addresses
+#define B1 0xFB		//4				project buttons
+#define B2 0xF7		//5
+#define B3 0xEF		//6
+#define B4 0xDF		//7
+
+
+uint8_t name_f = 0,w_f=0,start_flag, weight,rst_f=0,height,h_f=0;								//if not start flag, new user
+unsigned int name_addr=3,weight_addr=1,height_addr=2;						//addresses
+unsigned long timer;
 volatile long unsigned ms=0,s=0,m=0;
 
 
@@ -34,84 +37,157 @@ void steps(float *);
 void intro_screen(void);
 
 int main(void)
-{	
-	int name_array[5], flag=0, step=0,count=0;
-	float g_mag=0,acc_x, acc_y, acc_z, a=0, v=0, v0=0, a0=0, x0=0, x=0,acc_mag, avg_mag=0;
+{
+	unsigned int step_flag=0, step=0,count=0,goal=0;
+	float g_mag=0,acc_x, acc_y, acc_z, a=0, v=0, v0=0, a0=0, x0=0, x=0,acc_mag, avg_mag=0,step_length,step_d=0;
 
-	
-	DDRD=0xFF;
-	PORTD=0x00;
+
+	DDRD=0x00;		//project
+	PORTD=0xFF;
 	DDRC=0xF0;
-	PORTC=0x3F;
+	PORTC=0xF8;
+
+
 	register_st();
 	i2c_init();
 	LCD_init();
 	MMA8451_init();
-	
+
 	//uart_init();
 	//io_redirect();
-	//intro_screen();
-	
+	if(!eeprom_read_byte((uint8_t *)0))	intro_screen();
+	LCD_set_cursor(1,1);
+	printf("HELLO");
+	for(int i=0;i<5;i++){
+		LCD_set_cursor(7+i,1);
+		printf("%c",eeprom_read_byte((uint8_t *) 3+i));
+	}
+	_delay_ms(1000);
+	for(int i=0;i<15;i++)
+	{
+		LCD_set_cursor(1+i,1);
+		printf(" ");
+		_delay_ms(50);
+	}
+
 	weight=eeprom_read_byte((uint8_t *) weight_addr);		//weight from eeprom
-	name= eeprom_read_byte((uint8_t *) 3);
+	height=eeprom_read_byte((uint8_t *) height_addr);
+	step_length=(height/100.0)*S_RATIO;
 	timer=millis();
-	
+
 	while(1)
 	{
-		/*LCD_set_cursor(0,0);
-		printf("Hello ");
-		for(int i=0;i<5;i++){
-			printf("%c",name_array[i]);
-		}
-		LCD_set_cursor(0,1);*/
 		LCD_set_cursor(0,0);
 		printf("B1-GOAL");
 		LCD_set_cursor(13,0);
 		printf("W=%dkg",weight);
 		LCD_set_cursor(0,1);
 		printf("B2-Velocity");
+		LCD_set_cursor(13,1);
+		printf("H=%dcm",height);
+		LCD_set_cursor(0,2);
+		printf("B3-STOPWATCH");
 		LCD_set_cursor(0,3);
-		printf("B4-STOPWATCH");
-		if(PINC==B1)							//step counter menu, maybe distance goal
+		printf("B4-Change info");
+		if(PIND==B1)							//step counter menu, maybe distance goal
 		{
+			int goal_f=0;
 			LCD_clear();
-			while(PINC!=B4)
-			{	
+			while(!goal_f)
+			{
+				LCD_set_cursor(0,0);
+				printf("Set goal %d km",goal);
+
+				if(PIND==B1)
+				{
+					goal++;
+					_delay_ms(200);
+
+				}
+				if(PIND==B2)
+				{
+					_delay_ms(200);
+					LCD_set_cursor(0,2);
+					printf("g=%d",goal);
+					if(goal==0) goal=0;
+					else
+					{
+						if(goal-1==9) LCD_clear();
+						goal--;
+					}
+
+				}
+				if(PIND==B3)
+				{
+					goal_f=1;
+				}
+			}
+		
+			while(PIND!=B4)				//the other part is reaching the goal, there is going to be a variable with the distance traveled
+			{
 				if(millis()-timer>100)
-				{	
+				{
 					timer=millis();
 					steps(&g_mag);
-					if (!flag)
+					if (!step_flag)
 					{
-						if (g_mag>0.4){
-							flag = 1;
+						if (g_mag>0.4)
+						{
+							step_flag = 1;
 						}
 					}
 					else
 					{
 						if (g_mag<0.3)
 						{
-							flag = 0;
-							step++;
+							step_flag = 0;
+							step+=2;
+							step_d+=step_length*2;
 						}
 					}
 				}
+				if(goal<=(step_d/100))
+				{
+					LCD_clear();
+					_delay_ms(100);
+					while(PIND!=B4)
+					{
+						LCD_set_cursor(0,0);
+						printf("Congratulations!");
+						LCD_set_cursor(0,1);
+						printf("Completed goal: %dkm",goal);
+						LCD_set_cursor(0,2);
+						printf("In: %d steps",step);
+						LCD_set_cursor(0,3);
+						printf("Press B4 to go back");
+					}
+					break;
+				}
 				LCD_set_cursor(0,0);
-				printf("Current Steps: %d\n",step);
-				
-				
+				printf("Current Steps: %u",step);
+				LCD_set_cursor(0,1);
+				printf("Goal : %dkm",goal);
+				LCD_set_cursor(0,2);
+				printf("Step length: %.2fm",step_length);
+				LCD_set_cursor(0,3);
+				printf("Distance: %.3fm",step_d);
+
+
 			}
+			goal=0;
 			LCD_clear();
 			_delay_ms(200);
+
 		}
-		if(PINC==B2)
+		if(PIND==B2)
 		{
 			LCD_clear();
-			while(PINC!=B4)
-			{	
-				
+			while(PIND!=B4||step!=goal)
+			{
+
 				if(millis()-timer>500)
 				{
+					timer=millis();
 					acc_x = (3.1182*((adc_read(ADC_PIN0)*5.0)/1024)-5.1101)*GR_ACC_DK;
 					acc_y = (3.0506*((adc_read(ADC_PIN1)*5.0)/1024)-4.9732)*GR_ACC_DK; //Equations to convert voltage levels to acceleration in g then to acceleration in m/s^2
 					acc_z = (2.9112*((adc_read(ADC_PIN2)*5.0)/1024)-4.8236)*GR_ACC_DK;
@@ -120,11 +196,10 @@ int main(void)
 					avg_mag+= acc_mag;						// avg magnitude adding up to be divided and reset later
 					count++;
 				}
-				
-				
+
 				if(count==10)
-				{					
-					avg_mag /= 10;			// calculating average magnitude					
+				{
+					avg_mag /= 10;			// calculating average magnitude
 					if(avg_mag<1)
 					{
 						v=0;
@@ -135,15 +210,15 @@ int main(void)
 						a = avg_mag-a0;					// change in acceleration
 						v = v0+a*0.5;					// Velocity equation, check time
 					}
-					
+
 					x = x0+0.5*(v0+v)*0.5;		// Displacement equation
-		
+
 					a0 = a;
 					v0 = v;		// Setting new initial values
 					x0 = x;
-					
+
 					avg_mag=0;		// reset avg accel magnitude
-					count=0;		// reset counter					
+					count=0;		// reset counter
 				}
 				LCD_set_cursor(0,0);
 				printf("a= %.1f v= %.1f x= %.1f",a,v,x);  // for testing purposes
@@ -151,11 +226,10 @@ int main(void)
 			LCD_clear();
 			_delay_ms(200);
 		}
-		
-		if(PINC==B4){						//STOPWATCH
+
+		if(PIND==B3){						//STOPWATCH
 			LCD_clear();
-			_delay_ms(500);
-			while(PINC!=B4)
+			while(PIND!=B4)
 			{
 				LCD_set_cursor(0,0);
 				printf("STOPWATCH-B4=BACK");
@@ -172,46 +246,82 @@ int main(void)
 					LCD_set_cursor(13,3);
 					printf("RESET");
 				}
-				if(PINC==B1){
+				if(PIND==B1){
 					_delay_ms(100);
 					start_stopwatch();
 					rst_f=0;
 					LCD_clear();
 				}
-				if(PINC==B2)
+				if(PIND==B2)
 				{
 					_delay_ms(100);
 					stop_stopwatch();
 					rst_f=1;
 					LCD_clear();
-					
+
 				}
-				if(PINC==B3 && rst_f){								//reset stopwatch
+				if(PIND==B3 && rst_f){								//reset stopwatch
 					_delay_ms(100);
 					s=0;
 					ms=0;
 					m=0;
 					rst_f=0;
 					LCD_clear();
-					
+
 				}
 			}
 			LCD_clear();
 			_delay_ms(200);
 		}
+		if(PIND==B4)
+		{
+			LCD_clear();
+			_delay_ms(400);
+			while(PIND!=B4)
+			{
+				LCD_set_cursor(0,0);
+				printf("B1-Change data");
+				LCD_set_cursor(0,1);
+				printf("B2-Reset");
+				if(PIND==B1)
+				{
+					intro_screen();
+					_delay_ms(200);
+				}
+				if(PIND==B2)
+				{
+					LCD_clear();
+					LCD_set_cursor(0,0);
+					eeprom_write_byte((uint8_t *)0,0);
+					printf("Reset successful!");
+					LCD_set_cursor(0,1);
+					printf("Please restart device");
+					_delay_ms(2000);
+					break;
+				}
+			}
+			LCD_clear();
+			_delay_ms(400);
+		}
 	}
-	
-   
-		
-	
+
+
+
+
 	return 0;
 }
 
 void intro_screen(){
-	 int count_l=0,written=0,temp_w=40,temp_n=65,name_array[5];			//Array for names, letter count, if name was written
-	 
-	 while (PINC!=B4)
-	 {	
+	 int count_l=0,written=0,temp_w=40,temp_n=65,temp_h=160,name_array[5];			//Array for names, letter count, if name was written
+	 if(eeprom_read_byte((uint8_t *)0))
+	 {
+		 LCD_clear();
+		 _delay_ms(200);
+		 written=1;
+	 }
+	 while (PIND!=B4)
+	 {
+
 		 if(!written && name_f){					//if not written and flag set, write to eeprom
 			 LCD_clear();
 			 LCD_set_cursor(0,0);
@@ -229,26 +339,27 @@ void intro_screen(){
 			 printf("Name:");
 				 for(int i=0;i<5;i++){
 					 printf("%c",name_array[i]);
-				 }	 
-			 
+				 }
+
 		 }
 		 else printf("Name: NOT SET");
 		 LCD_set_cursor(0,1);
 		 if(w_f) printf("Weight: %dkg",weight);			//if flag set print w
-		 else printf("Weight: Not Set"); 
+		 else printf("Weight: Not Set");
 		 LCD_set_cursor(0,2);
-		 printf("SET:");
+		 if(h_f) printf("Height: %dcm",height);		//if flag set print h
+		 else printf("Height: Not Set");
 		 LCD_set_cursor(0,3);
-		 printf("Weight|");
+		 printf("1Weight");
 		 LCD_set_cursor(7,3);
-		 printf("Height|");
+		 printf("2Height");
 		 LCD_set_cursor(14,3);
-		 printf("Name");
-		 
-		 if(PINC==B1){
+		 printf("3Name");
+
+		 if(PIND==B1){
 			 LCD_clear();
 			 _delay_ms(100);
-			 while(PINC!=B4){
+			 while(PIND!=B4){
 				 LCD_set_cursor(0,0);
 				 printf("Set Your Weight:");
 				 LCD_set_cursor(0,1);
@@ -261,15 +372,15 @@ void intro_screen(){
 				 printf("SET|");
 				 LCD_set_cursor(16,3);
 				 printf("BACK");
-				 if(PINC==B1){
+				 if(PIND==B1){
 					 temp_w++;
 					 _delay_ms(200);
 				 }
-				 if(PINC==B2&&temp_w){
+				 if(PIND==B2&&temp_w){
 					 temp_w--;
 					 _delay_ms(200);
 				 }
-				 if(PINC==B3){
+				 if(PIND==B3){
 					 eeprom_write_byte((uint8_t *) 1,temp_w);					//EEPROM WRITE
 					 LCD_clear();
 					 LCD_set_cursor(0,0);
@@ -284,12 +395,59 @@ void intro_screen(){
 			 LCD_clear();
 			 _delay_ms(200);
 		 }
-		 
-		 if(PINC==B3){
+
+		 if(PIND==B2)
+		 {
 			 LCD_clear();
 			 _delay_ms(100);
-			 
-			 while(PINC!=B4){
+			 while(PIND!=B4)
+			 {
+				 LCD_set_cursor(0,0);
+				 printf("Set Your Height:");
+				 LCD_set_cursor(0,1);
+				 printf(" %02d",temp_h);
+				 LCD_set_cursor(2,3);
+				 printf("+");
+				 LCD_set_cursor(6,3);
+				 printf("-");
+				 LCD_set_cursor(12,3);
+				 printf("SET|");
+				 LCD_set_cursor(16,3);
+				 printf("BACK");
+				 if(PIND==B1)
+				 {
+					 temp_h++;
+					 _delay_ms(200);
+				 }
+				 if(PIND==B2&&temp_h)
+				 {
+					 temp_h--;
+					 _delay_ms(200);
+				 }
+				 if(PIND==B3)
+				 {
+					 eeprom_write_byte((uint8_t *) 2,temp_h);					//EEPROM WRITE
+					 LCD_clear();
+					 LCD_set_cursor(0,0);
+					 printf("EEPROM WRITE");
+					 height=temp_h;
+					 h_f=1;
+					 _delay_ms(300);
+					 break;
+				 }
+			 }
+			 temp_h=160;
+			 LCD_clear();
+			 _delay_ms(200);
+		 }
+
+
+		 if(PIND==B3)
+		 {
+			 LCD_clear();
+			 _delay_ms(100);
+
+			 while(PIND!=B4){
 				  LCD_set_cursor(0,0);
 				  printf("Set Your Name:");
 				  LCD_set_cursor(0,1);
@@ -302,55 +460,67 @@ void intro_screen(){
 				  printf("SET|");
 				  LCD_set_cursor(16,3);
 				  printf("BACK");
-				  
-				  if(PINC==B1){
+
+				  if(PIND==B1){
 					  if(temp_n==90) temp_n=65;
 					  else temp_n++;
-					  _delay_ms(200);
+					  _delay_ms(100);
 				  }
-				  if(PINC==B2&&temp_n){
+				  if(PIND==B2&&temp_n){
 					  if(temp_n==65) temp_n=90;
 					  else temp_n--;
-					  _delay_ms(200);
+					  _delay_ms(100);
 				  }
-				  
-				  if(PINC==B3){
-					  if(!count_l) name_array[count_l]=temp_n;		//Capital letter for 1. 
+
+				  if(PIND==B3){
+					  if(!count_l) name_array[count_l]=temp_n;		//Capital letter for 1.
 					  else  name_array[count_l]=temp_n+32;			//lowercase for rest
 					  LCD_set_cursor(0,2);
 					  printf("%d",name_array[count_l]);
-					  count_l++; 
+					  count_l++;
 					  if(count_l==5) break;
+
 					  _delay_ms(250);
-					
+
 				  }
 				}
-			
+			 eeprom_write_byte((uint8_t *)0,0);
 			 name_f=1;
+			 written=0;
 			 count_l=0;
 			 temp_n=65;
 			 LCD_clear();
-			 _delay_ms(200); 
+			 _delay_ms(200);
 		 }
-		 
-	 } 
+
+	 }
 	 LCD_clear();
-	 if(!w_f){
+	 if(!h_f){
 		LCD_set_cursor(0,2);
-		printf("SELECT YOUR WEIGHT!");
+		printf("NO HEIGHT SELECTED!");
 		_delay_ms(1000);
 		LCD_clear();
-		//intro_screen();						What to do here>>>
 	 }
-	 //eeprom_write_byte((uint8_t *)0,1);
-	
+	 if(!name_f)
+	 {
+		 LCD_set_cursor(0,2);
+		 printf("NO NAME SELECTED!");
+		 _delay_ms(1000);
+		 LCD_clear();
+	 }
+	 eeprom_write_byte((uint8_t *)0,1);
+	 LCD_set_cursor(0,1);
+	 printf("Data set, thx");
+	 _delay_ms(1000);
+	 LCD_clear();
+
 }
 
 void steps(float *g_mag)
 {
 	int x0, y0, z0;
 	float acd_x, acd_y, acd_z,g_max=0, g_min=10;
-	
+
 	get_data_accel(&x0, &y0, &z0);
 	acd_x = x0/1024.0;
 	acd_y = y0/1024.0;
@@ -359,10 +529,10 @@ void steps(float *g_mag)
 	if(*g_mag<0) *g_mag *= (-1);
 	if(*g_mag<g_min) g_min=*g_mag;
 	if(*g_mag>g_max) g_max=*g_mag;
-	
+
 
 	printf("mag = %.2f\nmin = %.2f\nmax = %.2f\n", *g_mag, g_min, g_max);
-	
+
 }
 
 
