@@ -13,7 +13,6 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include "i2cmaster.h"
-#include "ds1621.h"
 #include "lcd.h"
 #include "usart.h"
 #include "basic.h"
@@ -38,7 +37,7 @@ void intro_screen(void);
 
 int main(void)
 {
-	unsigned int step_flag=0, step=0,count=0,goal=0;
+	unsigned int step_flag=0, step=0,count=0,goal_s=0,goal_t=10;
 	float g_mag=0,acc_x, acc_y, acc_z, a=0, v=0, v0=0, a0=0, x0=0, x=0,acc_mag, avg_mag=0,step_length,step_d=0;
 
 
@@ -72,7 +71,7 @@ int main(void)
 
 	weight=eeprom_read_byte((uint8_t *) weight_addr);		//weight from eeprom
 	height=eeprom_read_byte((uint8_t *) height_addr);
-	step_length=(height/100.0)*S_RATIO;
+	step_length=(height/100.0)*S_RATIO;			//conversion from cm to m, ratio calculated based on data
 	timer=millis();
 
 	while(1)
@@ -96,11 +95,19 @@ int main(void)
 			while(!goal_f)
 			{
 				LCD_set_cursor(0,0);
-				printf("Set goal %d km",goal);
+				printf("Set goal %d km ",goal_s);
+				LCD_set_cursor(2,3);
+				printf("+");
+				LCD_set_cursor(6,3);
+				printf("-");
+				LCD_set_cursor(12,3);
+				printf("SET|");
+				LCD_set_cursor(16,3);
+				printf("BACK");
 
 				if(PIND==B1)
 				{
-					goal++;
+					goal_s++;
 					_delay_ms(200);
 
 				}
@@ -108,21 +115,25 @@ int main(void)
 				{
 					_delay_ms(200);
 					LCD_set_cursor(0,2);
-					printf("g=%d",goal);
-					if(goal==0) goal=0;
+					if(goal_s==0) goal_s=0;
 					else
 					{
-						if(goal-1==9) LCD_clear();
-						goal--;
+						goal_s--;
 					}
 
 				}
 				if(PIND==B3)
 				{
 					goal_f=1;
+					LCD_clear();
+				}
+				if(PIND==B4)
+				{
+					break;
+					_delay_ms(150);
 				}
 			}
-		
+
 			while(PIND!=B4)				//the other part is reaching the goal, there is going to be a variable with the distance traveled
 			{
 				if(millis()-timer>100)
@@ -142,11 +153,11 @@ int main(void)
 						{
 							step_flag = 0;
 							step+=2;
-							step_d+=step_length*2;
+							step_d+=step_length*2;		//adding a step length every step, *2 for the way it works
 						}
 					}
 				}
-				if(goal<=(step_d/100))
+				if(goal_s<=(step_d/100))			//this way you get meters//100 for testing purposes
 				{
 					LCD_clear();
 					_delay_ms(100);
@@ -155,7 +166,7 @@ int main(void)
 						LCD_set_cursor(0,0);
 						printf("Congratulations!");
 						LCD_set_cursor(0,1);
-						printf("Completed goal: %dkm",goal);
+						printf("Completed goal: %dkm",goal_s);
 						LCD_set_cursor(0,2);
 						printf("In: %d steps",step);
 						LCD_set_cursor(0,3);
@@ -166,7 +177,7 @@ int main(void)
 				LCD_set_cursor(0,0);
 				printf("Current Steps: %u",step);
 				LCD_set_cursor(0,1);
-				printf("Goal : %dkm",goal);
+				printf("Goal : %dkm",goal_s);
 				LCD_set_cursor(0,2);
 				printf("Step length: %.2fm",step_length);
 				LCD_set_cursor(0,3);
@@ -174,17 +185,77 @@ int main(void)
 
 
 			}
-			goal=0;
+			goal_s=0;
 			LCD_clear();
 			_delay_ms(200);
 
 		}
 		if(PIND==B2)
 		{
+			int goal_f=0;
 			LCD_clear();
-			while(PIND!=B4||step!=goal)
+			while(!goal_f)
 			{
-
+				LCD_set_cursor(0,0);
+				printf("Set time %d min ",goal_t);
+				LCD_set_cursor(2,3);
+				printf("+");
+				LCD_set_cursor(6,3);
+				printf("-");
+				LCD_set_cursor(12,3);
+				printf("SET|");
+				LCD_set_cursor(16,3);
+				printf("BACK");
+				if(PIND==B1)
+				{
+					goal_t++;
+					_delay_ms(200);
+					
+				}
+				if(PIND==B2)
+				{
+					_delay_ms(200);
+					LCD_set_cursor(0,2);
+					if(goal_t==0) goal_t=0;
+					else goal_t--;
+					
+				}
+				if(PIND==B3)
+				{
+					goal_f=1;
+					LCD_clear();
+				}
+				
+				if(PIND==B4)
+				{
+					break;
+					goal_t=10;
+					_delay_ms(150);
+				}
+			}
+			
+			start_stopwatch();
+			int s_new=s,ss=0;
+			while(PIND!=B4)
+			{
+				if(s_new!=s)
+				{
+					s_new=s;
+					if(ss==0){
+						if(goal_t==0)
+						{
+							LCD_clear();
+							LCD_set_cursor(0,0);
+							printf("Time's up!");
+							_delay_ms(1000);
+							break;
+						}
+						goal_t--;
+						ss=59;
+					}
+					else ss--;
+				}
+				
 				if(millis()-timer>500)
 				{
 					timer=millis();
@@ -196,7 +267,7 @@ int main(void)
 					avg_mag+= acc_mag;						// avg magnitude adding up to be divided and reset later
 					count++;
 				}
-
+				
 				if(count==10)
 				{
 					avg_mag /= 10;			// calculating average magnitude
@@ -210,20 +281,22 @@ int main(void)
 						a = avg_mag-a0;					// change in acceleration
 						v = v0+a*0.5;					// Velocity equation, check time
 					}
-
+					
 					x = x0+0.5*(v0+v)*0.5;		// Displacement equation
-
+					
 					a0 = a;
 					v0 = v;		// Setting new initial values
 					x0 = x;
-
+					
 					avg_mag=0;		// reset avg accel magnitude
 					count=0;		// reset counter
 				}
 				LCD_set_cursor(0,0);
-				printf("a= %.1f v= %.1f x= %.1f",a,v,x);  // for testing purposes
+				//printf("a= %.1f v= %.1f x= %.1f",a,v,x);  // for testing purposes
+				printf("time: %02d:%02d",goal_t,ss);
 			}
 			LCD_clear();
+			goal_t=10;
 			_delay_ms(200);
 		}
 
@@ -497,7 +570,7 @@ void intro_screen(){
 	 LCD_clear();
 	 if(!h_f){
 		LCD_set_cursor(0,2);
-		printf("NO HEIGHT SELECTED!");
+		printf("NO HEIGHT SELECTED!");		//height and name are very important
 		_delay_ms(1000);
 		LCD_clear();
 	 }
