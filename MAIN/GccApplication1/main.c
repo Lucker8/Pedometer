@@ -31,14 +31,14 @@ unsigned int name_addr=3,weight_addr=1,height_addr=2;						//addresses
 unsigned long timer;
 volatile long unsigned ms=0,s=0,m=0;
 
-
+float array_sum(float *,int);
 void steps(float *);
 void intro_screen(void);
 
 int main(void)
 {
-	unsigned int step_flag=0, step=0,count=0,goal_s=0,goal_t=10;
-	float g_mag=0,acc_x, acc_y, acc_z, a=0, v=0, v0=0, a0=0, x0=0, x=0,acc_mag, avg_mag=0,step_length,step_d=0;
+	unsigned int step_flag=0, step=0,count=0,goal_s=0,goal_t=10,count2=0,k=0;
+	float g_mag=0,acc_x, acc_y, acc_z, a=0, v=0, v0=0, a0=0, x0=0, x=0,acc_mag, avg_mag=0,step_length,step_d=0,avg_mag_a[10]={0};
 
 
 	DDRD=0x00;		//project
@@ -120,7 +120,6 @@ int main(void)
 					{
 						goal_s--;
 					}
-
 				}
 				if(PIND==B3)
 				{
@@ -270,7 +269,15 @@ int main(void)
 				
 				if(count==10)
 				{
+					count2++;
 					avg_mag /= 10;			// calculating average magnitude
+					if(count2==10)
+					{
+						if(k==10) k=0;
+						avg_mag_a[k]=avg_mag;
+						k++;
+						
+					}
 					if(avg_mag<1)
 					{
 						v=0;
@@ -294,6 +301,8 @@ int main(void)
 				LCD_set_cursor(0,0);
 				//printf("a= %.1f v= %.1f x= %.1f",a,v,x);  // for testing purposes
 				printf("time: %02d:%02d",goal_t,ss);
+				LCD_set_cursor(0,1);
+				printf("Avg mag 5s: %.2f",array_sum(avg_mag_a,10));
 			}
 			LCD_clear();
 			goal_t=10;
@@ -368,7 +377,9 @@ int main(void)
 					eeprom_write_byte((uint8_t *)0,0);
 					printf("Reset successful!");
 					LCD_set_cursor(0,1);
-					printf("Please restart device");
+					printf("Please restart");
+					LCD_set_cursor(0,2);
+					printf("the device");
 					_delay_ms(2000);
 					break;
 				}
@@ -604,8 +615,19 @@ void steps(float *g_mag)
 	if(*g_mag>g_max) g_max=*g_mag;
 
 
-	printf("mag = %.2f\nmin = %.2f\nmax = %.2f\n", *g_mag, g_min, g_max);
+	//printf("mag = %.2f\nmin = %.2f\nmax = %.2f\n", *g_mag, g_min, g_max);
 
+}
+
+float array_sum(float arr[],int n)
+{
+	int sum=0;
+	for(int i=0;i<n;i++)
+	{
+		sum+=arr[i];
+	}
+	
+	return sum;
 }
 
 
