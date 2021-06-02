@@ -17,9 +17,6 @@
 #include "usart.h"
 #include "basic.h"
 
-
-
-
 #define B1 0xFB		//4				project buttons
 #define B2 0xF7		//5
 #define B3 0xEF		//6
@@ -37,9 +34,8 @@ void intro_screen(void);
 
 int main(void)
 {
-	unsigned int step_flag=0, step=0,count=0,goal_s=0,goal_t=10,count2=0,k=0;
-	float g_mag=0,acc_x, acc_y, acc_z, a=0, v=0, v0=0, a0=0, x0=0, x=0,acc_mag, avg_mag=0,step_length,step_d=0,avg_mag_a[10]={0};
-
+	unsigned int step_flag=0, step=0,count=0,goal_s=0,goal_t=10,k=0, reset_count=0;
+	float g_mag=0,acc_x, acc_y, acc_z, v=0, v0=0, x0=0, x=0,acc_mag, avg_mag=0,step_length,step_d=0,avg_mag_a[10]={0};
 
 	DDRD=0x00;		//project
 	PORTD=0xFF;
@@ -141,14 +137,14 @@ int main(void)
 					steps(&g_mag);
 					if (!step_flag)
 					{
-						if (g_mag>0.4)
+						if (g_mag>0.5)
 						{
 							step_flag = 1;
 						}
 					}
 					else
 					{
-						if (g_mag<0.3)
+						if (g_mag<0.2)
 						{
 							step_flag = 0;
 							step+=2;
@@ -156,6 +152,7 @@ int main(void)
 						}
 					}
 				}
+
 				if(goal_s<=(step_d/100))			//this way you get meters//100 for testing purposes
 				{
 					LCD_clear();
@@ -177,10 +174,8 @@ int main(void)
 				printf("Current Steps: %u",step);
 				LCD_set_cursor(0,1);
 				printf("Goal : %dkm",goal_s);
-				LCD_set_cursor(0,2);
-				printf("Step length: %.2fm",step_length);
 				LCD_set_cursor(0,3);
-				printf("Distance: %.3fm",step_d);
+				printf("Distance: %dm",(int) step_d);
 
 
 			}
@@ -191,7 +186,7 @@ int main(void)
 		}
 		if(PIND==B2)
 		{
-			int goal_f=0;
+			int goal_f=0,g=0;
 			LCD_clear();
 			while(!goal_f)
 			{
@@ -209,7 +204,7 @@ int main(void)
 				{
 					goal_t++;
 					_delay_ms(200);
-					
+
 				}
 				if(PIND==B2)
 				{
@@ -217,14 +212,15 @@ int main(void)
 					LCD_set_cursor(0,2);
 					if(goal_t==0) goal_t=0;
 					else goal_t--;
-					
+
 				}
 				if(PIND==B3)
 				{
 					goal_f=1;
+					g=goal_t;
 					LCD_clear();
 				}
-				
+
 				if(PIND==B4)
 				{
 					break;
@@ -232,7 +228,7 @@ int main(void)
 					_delay_ms(150);
 				}
 			}
-			
+
 			start_stopwatch();
 			int s_new=s,ss=0;
 			while(PIND!=B4)
@@ -243,10 +239,15 @@ int main(void)
 					if(ss==0){
 						if(goal_t==0)
 						{
+							x=500;
 							LCD_clear();
 							LCD_set_cursor(0,0);
-							printf("Time's up!");
-							_delay_ms(1000);
+							printf("Time is up!");
+							LCD_set_cursor(0,1);
+							printf("Goal was %d min",g);
+							LCD_set_cursor(0,2);
+							printf("You traveled: %.1fm",x);
+							_delay_ms(10000);
 							break;
 						}
 						goal_t--;
@@ -254,8 +255,8 @@ int main(void)
 					}
 					else ss--;
 				}
-				
-				if(millis()-timer>500)
+
+				if(millis()-timer>50)
 				{
 					timer=millis();
 					acc_x = (3.1182*((adc_read(ADC_PIN0)*5.0)/1024)-5.1101)*GR_ACC_DK;
@@ -266,43 +267,49 @@ int main(void)
 					avg_mag+= acc_mag;						// avg magnitude adding up to be divided and reset later
 					count++;
 				}
-				
+
 				if(count==10)
 				{
-					count2++;
+					reset_count++;
 					avg_mag /= 10;			// calculating average magnitude
-					if(count2==10)
+					avg_mag_a[k]=avg_mag;		//calculating an avg for the last 5 sec
+					k++;
+					if(k==10) k=0;
+
+					if (reset_count>=4) //resets initial velocity every 2nd second to avoid drift
 					{
-						if(k==10) k=0;
-						avg_mag_a[k]=avg_mag;
-						k++;
-						
+						v0=0;
+						reset_count=0;
 					}
+
 					if(avg_mag<1)
 					{
+						avg_mag=0;
 						v=0;
-						a=0;
 					}		// If avg magnitude is below 1 m/s/s Velocity and Acceleration are reset
-					else
-					{
-						a = avg_mag-a0;					// change in acceleration
-						v = v0+a*0.5;					// Velocity equation, check time
-					}
-					
+					else v = v0+avg_mag*0.5;					// Velocity equation, check time
+
+
 					x = x0+0.5*(v0+v)*0.5;		// Displacement equation
-					
-					a0 = a;
+
 					v0 = v;		// Setting new initial values
 					x0 = x;
-					
+
+					LCD_set_cursor(0,0);
+					printf("Avg mag : %.1f ",avg_mag);
+					LCD_set_cursor(0,2);
+					printf("Velocity: %.1f ",v);
+					LCD_set_cursor(0,3);
+					printf("Distance: %.1f ",x);
+
 					avg_mag=0;		// reset avg accel magnitude
 					count=0;		// reset counter
 				}
-				LCD_set_cursor(0,0);
-				//printf("a= %.1f v= %.1f x= %.1f",a,v,x);  // for testing purposes
-				printf("time: %02d:%02d",goal_t,ss);
+				LCD_set_cursor(15,0);
+				printf("%02d:%02d",goal_t,ss);
 				LCD_set_cursor(0,1);
-				printf("Avg mag 5s: %.2f",array_sum(avg_mag_a,10));
+				printf("per 5s  : %.1f ",(array_sum(avg_mag_a,10))/10);
+
 			}
 			LCD_clear();
 			goal_t=10;
@@ -603,7 +610,7 @@ void intro_screen(){
 void steps(float *g_mag)
 {
 	int x0, y0, z0;
-	float acd_x, acd_y, acd_z,g_max=0, g_min=10;
+	float acd_x, acd_y, acd_z;
 
 	get_data_accel(&x0, &y0, &z0);
 	acd_x = x0/1024.0;
@@ -611,11 +618,6 @@ void steps(float *g_mag)
 	acd_z = z0/1024.0;
 	*g_mag = (sqrt(acd_x*acd_x+acd_y*acd_y+acd_z*acd_z))-1;
 	if(*g_mag<0) *g_mag *= (-1);
-	if(*g_mag<g_min) g_min=*g_mag;
-	if(*g_mag>g_max) g_max=*g_mag;
-
-
-	//printf("mag = %.2f\nmin = %.2f\nmax = %.2f\n", *g_mag, g_min, g_max);
 
 }
 
@@ -626,7 +628,7 @@ float array_sum(float arr[],int n)
 	{
 		sum+=arr[i];
 	}
-	
+
 	return sum;
 }
 
