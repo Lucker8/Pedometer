@@ -41,15 +41,12 @@ int main(void)
 	PORTD=0xFF;
 	DDRC=0xF0;
 	PORTC=0xF8;
-
-
+	
 	register_st();
 	i2c_init();
 	LCD_init();
 	MMA8451_init();
-
-	//uart_init();
-	//io_redirect();
+	
 	if(!eeprom_read_byte((uint8_t *)0))	intro_screen();
 	LCD_set_cursor(1,1);
 	printf("HELLO");
@@ -77,14 +74,14 @@ int main(void)
 		LCD_set_cursor(13,0);
 		printf("W=%dkg",weight);
 		LCD_set_cursor(0,1);
-		printf("B2-Velocity");
+		printf("B2-Time Lapse");
 		LCD_set_cursor(13,1);
 		printf("H=%dcm",height);
 		LCD_set_cursor(0,2);
 		printf("B3-STOPWATCH");
 		LCD_set_cursor(0,3);
 		printf("B4-Change info");
-		if(PIND==B1)							//step counter menu, maybe distance goal
+		if(PIND==B1)							// distance goal menu
 		{
 			int goal_f=0;
 			LCD_clear();
@@ -129,7 +126,7 @@ int main(void)
 				}
 			}
 
-			while(PIND!=B4)				//the other part is reaching the goal, there is going to be a variable with the distance traveled
+			while(PIND!=B4)				
 			{
 				if(millis()-timer>100)
 				{
@@ -153,7 +150,7 @@ int main(void)
 					}
 				}
 
-				if(goal_s<=(step_d/100))			//this way you get meters//100 for testing purposes
+				if(goal_s<=(step_d/1000))			//to km
 				{
 					LCD_clear();
 					_delay_ms(100);
